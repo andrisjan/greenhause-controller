@@ -21,6 +21,19 @@ double temp1;
 double temp2;
 double tempAverage;
 
+// variables for windows
+const double WINDOWS_OPEN_TEMP_LEVEL = 26.0;  
+const double WINDOWS_CLOSE_TEMP_LEVEL = 24.0;
+const int WIN_OFF = 0;
+const int WIN_OPENING = 1;
+const int WIN_CLOSING = 2;
+const int WIN_BUSY = 10;                      // status lai izvairītos no loga raustīšanās
+int windowStatus = WIN_OFF;
+const int WINDOWS_LOOP_LENGHT = 30;           // how many loops window open/close operation will be active. 30 * 0.1 = 3 sec
+int windowsLoopCounter = 0;
+const int WINDOW_LOOP_RESET_LENGHT = 100;     // after how many loops windows can be opened again
+int windowLoopReset = 0; 
+
 void setup() {
   Serial.begin(9600);      // open the serial port at 9600 bps:  
   Serial.println("setup ...");
@@ -87,22 +100,63 @@ int initTempArray(){
  * window open / close related methods
  */
 void windowManager(){
-   // logu pacelšana / nolaišana
-   if (digitalRead(WIN_UP_SW_DIG_IN_PIN) == HIGH) {
-       Serial.println("UP");
-       digitalWrite(WIN_DOWN_SIG_DIG_OUT_PIN, LOW);
-       digitalWrite(WIN_UP_SIG_DIG_OUT_PIN, HIGH);
-   }
-   else if (digitalRead(WIN_DOWN_SW_DIG_IN_PIN) == HIGH){
-       Serial.println("DOWN");
-       digitalWrite(WIN_UP_SIG_DIG_OUT_PIN, LOW);
-       digitalWrite(WIN_DOWN_SIG_DIG_OUT_PIN, HIGH);
-   }
-   else{
-       Serial.println("OFF");
-       digitalWrite(WIN_DOWN_SIG_DIG_OUT_PIN, LOW);
-       digitalWrite(WIN_UP_SIG_DIG_OUT_PIN, LOW);
-   }  
+    // open/close windows based on manual switch
+    if (digitalRead(WIN_UP_SW_DIG_IN_PIN) == HIGH) {
+        openWindows();
+        return;
+    }
+    else if (digitalRead(WIN_DOWN_SW_DIG_IN_PIN) == HIGH){
+        closeWindows();
+        return;
+    }
+
+    // open/close windows based on temp
+    if (windowStatus == WIN_OFF && tempAverage > WINDOWS_OPEN_TEMP_LEVEL){
+        windowStatus = WIN_OPENING;
+    }
+    else if (windowStatus == WIN_OFF && tempAverage < WINDOWS_CLOSE_TEMP_LEVEL){
+        windowStatus = WIN_CLOSING;
+    }
+    if (windowStatus == WIN_BUSY){
+        turnOffWindows();
+        if (windowsLoopCounter > 0){ // TODO: periodu kurā neko nedara vajag ilgāku
+            --windowsLoopCounter;
+        }
+        else{
+            windowStatus = WIN_OFF;
+        }
+    }
+    else if (windowStatus == WIN_OPENING && windowsLoopCounter < WINDOWS_LOOP_LENGHT){
+        ++windowsLoopCounter;
+        openWindows();
+    }
+    else if (windowStatus == WIN_CLOSING && windowsLoopCounter < WINDOWS_LOOP_LENGHT){
+        ++windowsLoopCounter;
+        closeWindows(); 
+    }
+    else{
+        windowStatus = WIN_BUSY;
+    }
+
+    Serial.println("windowStatus: " + String(windowStatus) + ", windowsLoopCounter: " + String(windowsLoopCounter));
+}
+
+void openWindows(){
+    Serial.println("UP");
+    digitalWrite(WIN_DOWN_SIG_DIG_OUT_PIN, LOW);
+    digitalWrite(WIN_UP_SIG_DIG_OUT_PIN, HIGH);
+}
+
+void closeWindows(){
+    Serial.println("DOWN");
+    digitalWrite(WIN_UP_SIG_DIG_OUT_PIN, LOW);
+    digitalWrite(WIN_DOWN_SIG_DIG_OUT_PIN, HIGH);
+}
+
+void turnOffWindows(){
+    Serial.println("OFF");
+    digitalWrite(WIN_DOWN_SIG_DIG_OUT_PIN, LOW);
+    digitalWrite(WIN_UP_SIG_DIG_OUT_PIN, LOW);
 }
  
 void setUpWindows(){
