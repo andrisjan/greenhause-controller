@@ -28,6 +28,7 @@ const int WIN_OFF = 0;
 const int WIN_OPENING = 1;
 const int WIN_CLOSING = 2;
 const int WIN_BUSY = 10;                      // status lai izvairītos no loga raustīšanās
+boolean windowsOperating = false;             // flag that windows relays are operating and we cannot measure temperature
 int windowStatus = WIN_OFF;
 const int WINDOWS_LOOP_LENGHT = 30;           // how many loops window open/close operation will be active. 30 * 0.1 = 3 sec
 int windowsLoopCounter = 0;
@@ -59,12 +60,15 @@ void loop() {
 /**
  * temperature related methods
  */
-double temperatureManager() {
+void temperatureManager() {
+    // do not measure temp while opening/closing windows, because of voltage drop
+    if (windowsOperating){
+        return;
+    }
     samplesForTmp1[tempLoopCounter] = analogRead(TEMP_1_ANALOG_IN_PIN);
     samplesForTmp2[tempLoopCounter] = analogRead(TEMP_2_ANALOG_IN_PIN);
     int temp1Sum = 0;
     int temp2Sum = 0;
-    int divider;
     for(int i=0; i<SAMPLE_CNT; ++i){
         temp1Sum += samplesForTmp1[i];
         temp2Sum += samplesForTmp2[i];
@@ -109,6 +113,10 @@ void windowManager(){
         closeWindows();
         return;
     }
+//    // TODO: remove
+//    else{
+//        turnOffWindows();
+//    }
 
     // open/close windows based on temp
     if (windowStatus == WIN_OFF && tempAverage > WINDOWS_OPEN_TEMP_LEVEL){
@@ -117,6 +125,7 @@ void windowManager(){
     else if (windowStatus == WIN_OFF && tempAverage < WINDOWS_CLOSE_TEMP_LEVEL){
         windowStatus = WIN_CLOSING;
     }
+    
     if (windowStatus == WIN_BUSY){
         turnOffWindows();
         if (windowsLoopCounter > 0){ // TODO: periodu kurā neko nedara vajag ilgāku
@@ -143,18 +152,21 @@ void windowManager(){
 
 void openWindows(){
     Serial.println("UP");
+    windowsOperating = true;
     digitalWrite(WIN_DOWN_SIG_DIG_OUT_PIN, LOW);
     digitalWrite(WIN_UP_SIG_DIG_OUT_PIN, HIGH);
 }
 
 void closeWindows(){
     Serial.println("DOWN");
+    windowsOperating = true;
     digitalWrite(WIN_UP_SIG_DIG_OUT_PIN, LOW);
     digitalWrite(WIN_DOWN_SIG_DIG_OUT_PIN, HIGH);
 }
 
 void turnOffWindows(){
     Serial.println("OFF");
+    windowsOperating = false;
     digitalWrite(WIN_DOWN_SIG_DIG_OUT_PIN, LOW);
     digitalWrite(WIN_UP_SIG_DIG_OUT_PIN, LOW);
 }
