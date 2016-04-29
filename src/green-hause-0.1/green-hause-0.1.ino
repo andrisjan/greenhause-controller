@@ -113,10 +113,6 @@ void windowManager(){
         closeWindows();
         return;
     }
-//    // TODO: remove
-//    else{
-//        turnOffWindows();
-//    }
 
     // open/close windows based on temp
     if (windowStatus == WIN_OFF && tempAverage > WINDOWS_OPEN_TEMP_LEVEL){
