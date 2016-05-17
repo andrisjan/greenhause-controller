@@ -1,89 +1,132 @@
 #include <ArduinoJson.h>
 #include <SPI.h>
 #include <Ethernet.h>
+#include <avr/pgmspace.h>
 
+const PROGMEM byte ERROR_MSG_MAX_LEN = 32;
+const PROGMEM char CANNOT_PARSE_JSON[] = "Cannot parse json";
+const PROGMEM char ERROR_2[] = "Error 2";
+const PROGMEM char* const ERROR_MSG[] = {
+                      CANNOT_PARSE_JSON, 
+                      ERROR_2
+                      };
+char errorBuffer[ERROR_MSG_MAX_LEN];
 
-//const int LED_DIG_OUT_PIN = 13;
+#define SNSR_TEMP_1     10
+#define SNSR_TEMP_2     11
+#define SNSR_TEMP_AVG   12
 
+// ====================== ETHERNET ==========
 byte mac[] = { 0x90, 0xA2, 0xDA, 0x0D, 0x85, 0xD9 }; 
-byte ip[] = { 192, 168, 1, 10 };                 
-EthernetServer server(80);                  
-byte blankLineCounter = 0;
+byte ip[] = { 192, 168, 2, 10 };                 
+EthernetServer server(80);   
+const byte msgBuffMaxSize = 255;
+               
 void setup() {
-  Serial.begin(9600);
-  Ethernet.begin(mac,ip);     
-  server.begin();          
-  Serial.print("server is at ");
-  Serial.println(Ethernet.localIP());
-  
-  //pinMode(LED_DIG_OUT_PIN, OUTPUT);
+    Serial.begin(9600);
+    while (!Serial);
+    Ethernet.begin(mac,ip);     
+    server.begin(); 
+    Serial.print("server is on ");
+    Serial.println(Ethernet.localIP());
 }
 
 void loop() {
-   //digitalWrite(LED_DIG_OUT_PIN, HIGH);
-   //delay(1000);
-   //digitalWrite(LED_DIG_OUT_PIN, LOW);
-   //delay(1000);
-    EthernetClient client = server.available();   // look for the client
-    
-    if (client) {
-      Serial.println("12new client");
-      int size = 1024;
-      char header[size];
-      char body[size];
-      byte newLineCounter = 0;
-      boolean readBody = false;
-      int bodyCounter = 0;
-      int headerCounter = 0;
-        if (client.available()) {
-          char c;
-          while ((c = client.read()) > 0){
+    ethernetManager();
+}
+
+void ethernetManager(){
+    EthernetClient client = server.available(); 
+    if (client && client.available() && client.connected()) {
+        Serial.println("New client request ...");
+        char htmlBody[msgBuffMaxSize];
+        byte newLineCounter = 0;
+        boolean readBody = false;
+        short strCounter = 0;
+        char c;
+        while ((c = client.read()) > 0){
             if (c == '\r'){
-              continue;
-              Serial.write("\\r");
+              //Serial.write("[r]");
             }
-            if (c == '\n'){
+            else if (c == '\n'){
               ++newLineCounter;
-              Serial.write("\\n");
+              //Serial.write("[n]");
               if (newLineCounter == 2){
                   newLineCounter = 0;
-                  Serial.print("kkknext line should start message body");
                   readBody = true;
-                  continue;
               }
-              continue;
             }
-            if (newLineCounter > 0){
+            else if (newLineCounter > 0){
               --newLineCounter;
             }
-            if (bodyCounter >= size /*|| headerCounter >= size*/){
-              break;
+            if (strCounter >= msgBuffMaxSize){
+                break;
             }
             if (readBody){
-              body[bodyCounter++] = c;
+                htmlBody[strCounter++] = c;
             }
-            else{
-              //header[headerCounter++] = c;
-            }
-            Serial.write(c);
-          } // end while
-          body[bodyCounter] = 0;
-          header[headerCounter] = 0;
-        }
-
-      delay(1);
-      // close the connection:
-      client.stop();
-      Serial.println("client disconnected");
-//      if (headerCounter > 0){
-//        //Serial.println("---- HEADER BEGIN --------");
-//        //Serial.println(header);
-//        //Serial.println("---- HEADER END --------");
-//      }
-
+            // Serial.write(c);
+        } // end while client read
+        htmlBody[strCounter] = 0;
+        //Serial.println("bodyCounter=" + String(strCounter));
         Serial.println("---- BODY BEGIN --------");
-        Serial.println(body);
+        Serial.println(htmlBody);
         Serial.println("---- BODY END --------");
-
-    }
+        client.println("HTTP/1.1 200 OK");
+        client.println("Content-Type: application/json");
+        client.println();
+        StaticJsonBuffer<200> jsonBuffer; // TODO: 200 ir chari ? tad jāliek msgBuffMaxSize - notestēt
+        JsonObject& json = jsonBuffer.parseObject(htmlBody);
+        if (!json.success()){
+            Serial.println("htmlBody parse failed");
+            client.println(jsonErrorResponse(1));
+        }
+        else{
+            byte method = json["m"];
+            switch (method) {
+                case 1:
+                    getSensorValue(client, json);
+                    break;
+                case 2:
+                    //do something when var equals 2
+                    break;
+                default: 
+                    break;
+            }
+        }
+        delay(1);
+        client.stop();
+        Serial.println("Client disconnected");
+    } // end client available & connected
 }
+
+// methodID: 1
+void getSensorValue(EthernetClient client, JsonObject& json){
+    byte sensorId = json["p"]["sensor"];
+    double value = -1;
+    switch(sensorId){
+        case SNSR_TEMP_1:
+            value = 10.1;
+            break;
+        case SNSR_TEMP_2:
+            value = 20.2;
+            break;
+        case SNSR_TEMP_AVG:
+            value = 15.5;
+            break;
+    }
+    client.print("<h2>");
+    client.print("GetSensorValue: ");
+    client.print(String(value));
+    client.print("</h2>");
+
+    Serial.println("methodID: 1");
+    Serial.println("sensor: " + String(sensorId));
+    Serial.println("value: " + String(value));
+}
+
+String jsonErrorResponse(byte errorCode){
+    strcpy_P(errorBuffer, (char*)pgm_read_word(&(ERROR_MSG[errorCode-1]))); 
+    return "{\"error\":{\"code\":" + String(errorCode) + ",\"msg\":\"" + errorBuffer + "\"}";
+}
+
