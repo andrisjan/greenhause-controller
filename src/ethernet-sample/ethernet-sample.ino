@@ -3,18 +3,22 @@
 #include <Ethernet.h>
 #include <avr/pgmspace.h>
 
-const PROGMEM byte ERROR_MSG_MAX_LEN = 32;
-const PROGMEM char CANNOT_PARSE_JSON[] = "Cannot parse json";
-const PROGMEM char ERROR_2[] = "Error 2";
-const PROGMEM char* const ERROR_MSG[] = {
-                      CANNOT_PARSE_JSON, 
-                      ERROR_2
-                      };
-char errorBuffer[ERROR_MSG_MAX_LEN];
-
+// =============== GLOBAL CONSTANTS ==============
 #define SNSR_TEMP_1     10
 #define SNSR_TEMP_2     11
 #define SNSR_TEMP_AVG   12
+
+// =============== ERRORS =====================
+const PROGMEM byte ERROR_MSG_MAX_LEN = 32;
+const PROGMEM byte CANNOT_PARSE_JSON_ID = 1;
+const PROGMEM char CANNOT_PARSE_JSON_MSG[] = "Cannot parse json";
+const PROGMEM byte ERROR_2_ID = 2;
+const PROGMEM char ERROR_2_MSG[] = "Error 2";
+const PROGMEM char* const ERROR_MSG[] = {
+                      CANNOT_PARSE_JSON_MSG,    // 1
+                      ERROR_2_MSG               // 2
+                      };
+char errorBuffer[ERROR_MSG_MAX_LEN];
 
 // ====================== ETHERNET ==========
 byte mac[] = { 0x90, 0xA2, 0xDA, 0x0D, 0x85, 0xD9 }; 
@@ -79,7 +83,7 @@ void ethernetManager(){
         JsonObject& json = jsonBuffer.parseObject(htmlBody);
         if (!json.success()){
             Serial.println("htmlBody parse failed");
-            client.println(jsonErrorResponse(1));
+            client.println(jsonErrorResponse(CANNOT_PARSE_JSON_ID));
         }
         else{
             byte method = json["m"];
