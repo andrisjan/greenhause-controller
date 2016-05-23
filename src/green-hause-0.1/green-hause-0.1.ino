@@ -1,16 +1,21 @@
 #include <math.h>
+#include <avr/pgmspace.h>
 #include <ArduinoJson.h>
 #include <SPI.h>
+//#include <SD.h>
 #include <Ethernet.h>
-#include <avr/pgmspace.h>
 //#include <MemoryFree.h>
+#include "sha1.h"
 
 const int SLEEP = 100; // TODO jāizdomā kā regulēt procesu izpildes laiku - relatīvi pret sleep time
+const char API_SECRET[] = "12345678";
+const boolean CHECK_MSG_SIG = true;
+// =============== FILES ================
+//File myFile;
 // =============== SENSOR IDs ==============
 #define SNSR_TEMP_1     10
 #define SNSR_TEMP_2     11
 #define SNSR_TEMP_AVG   12
-
 // =============== ERRORS =====================
 const PROGMEM byte ERROR_MSG_MAX_LEN = 32;
 const PROGMEM byte CANNOT_PARSE_JSON_ID = 1;
@@ -22,15 +27,16 @@ const PROGMEM char* const ERROR_MSG[] = {
                       ERROR_2_MSG               // 2
                       };
 char errorBuffer[ERROR_MSG_MAX_LEN];
-
 // ============== PIN DEFs ===============
 // digital pins
 // 10, 11, 12, 13 - ocup by ethernet
+#define ETHERNET_DIG_OUT_PIN          10    // set HI to use ethernet
 #define WIN_UP_SIG_DIG_OUT_PIN        9     // output pin loga pacelšanas releja signāls
 #define WIN_DOWN_SIG_DIG_OUT_PIN      8     // output pin loga nolaišanas releja signāls
 #define WIN_UP_SW_DIG_IN_PIN          7     // input pin loga pacelšanas signālam
 #define WIN_DOWN_SW_DIG_IN_PIN        6     // input pin loga nolaišanas signālam
 #define WIN_AUTO_MODE_SW_DIG_IN_PIN   5     // input pin logu automātiskā režīma slēdzis
+#define SD_DIG_OUT_PIN                4     // set HI to use SD card
 // analog pins
 // A0, A1 - ocup by ethernet
 #define TEMP_1_ANALOG_IN_PIN      2     // analog input termorezistoram 1
@@ -67,10 +73,40 @@ EthernetServer server(80);
 const byte msgBuffMaxSize = 255;
 
 void setup() {
-    Serial.begin(9600);      // open the serial port at 9600 bps:  
+    Serial.begin(9600);      // open the serial port at 9600 bps: 
     setUpEthernet();
     setUpWindows();
     initTempArray();
+    //setUpSdCard();
+
+    char key[] = "12345678"; 
+    char msg[] = "test";
+    uint8_t *hash;
+    Sha1.initHmac((uint8_t*)key, strlen(key));
+    Sha1.print(msg);
+    //hash = Sha1.resultHmac();
+    printHash(Sha1.resultHmac());
+
+//    uint8_t *hash;
+//    Sha1.init();
+//    String msg = "abc";
+//    Sha1.print(msg);
+//    hash = Sha1.result();
+//    printHash(hash);
+}
+
+void printHash(uint8_t* hash) {
+  int i;
+  for (i=0; i<20; i++) {
+    Serial.print(hash[i]);
+    Serial.print(";");
+  }
+  Serial.println("-------");
+  Serial.println("");
+  for (i=0; i<20; i++) {
+    Serial.print("0123456789abcdef"[hash[i]>>4]);
+    Serial.print("0123456789abcdef"[hash[i]&0xf]);
+  }
 }
 
 void loop() {
@@ -153,12 +189,21 @@ void ethernetManager(){
         }
         delay(1);
         client.stop();
+        Serial.println("Client disconnected");
     } // end client available & connected
 }
 
 // methodID: 1
 void getSensorValue(EthernetClient client, JsonObject& json){
     byte sensorId = json["p"]["sensor"];
+    if (CHECK_MSG_SIG){
+        String msg = "m=1;p=sensor=" + String(sensorId) + ";;";
+        uint8_t *hash;
+        Sha1.initHmac((const uint8_t*)API_SECRET, 8); // key, and length of key in bytes
+        Sha1.print(msg);
+        hash = Sha1.resultHmac();
+        printHash(hash);
+    }
     double value = -1;
     switch(sensorId){
         case SNSR_TEMP_1:
@@ -198,8 +243,13 @@ String jsonErrorResponse(byte errorCode){
 void setUpEthernet(){
     Ethernet.begin(mac,ip);     
     server.begin(); 
-    Serial.print("server is on ");
-    Serial.println(Ethernet.localIP());
+    Serial.print("Server is on ");
+    Serial.print(Ethernet.localIP());
+    Serial.println(", ethernet ON");
+//    pinMode(ETHERNET_DIG_OUT_PIN, OUTPUT);
+//    digitalWrite(ETHERNET_DIG_OUT_PIN, LOW);
+//    pinMode(SD_DIG_OUT_PIN, OUTPUT);
+//    digitalWrite(SD_DIG_OUT_PIN, HIGH);
 }
 
 /**
@@ -322,4 +372,17 @@ void setUpWindows(){
     pinMode(WIN_DOWN_SIG_DIG_OUT_PIN, OUTPUT);
     digitalWrite(WIN_DOWN_SIG_DIG_OUT_PIN, LOW);
 }
+
+
+/**
+ * SD card
+ */ 
+//void setUpSdCard(){
+//  pinMode(SD_DIG_OUT_PIN, OUTPUT);
+//  digitalWrite(SD_DIG_OUT_PIN, HIGH);
+//    if (!SD.begin(SD_DIG_OUT_PIN)) {
+//        Serial.println("SD initialization failed!");
+//        return;
+//    }  
+//}
 
