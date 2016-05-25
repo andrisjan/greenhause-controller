@@ -5,8 +5,14 @@
 //#include <SD.h>
 #include <Ethernet.h> // ethernet library
 #include <MemoryFree.h> // RAM monitoring
+#include <SHA256.h> // crypto library
 
 const int SLEEP = 100; // TODO jāizdomā kā regulēt procesu izpildes laiku - relatīvi pret sleep time
+// ============== API message signature ============
+const char API_SECRET[] = "sec";
+const boolean CHECK_MSG_SIG = true;
+#define HASH_SIZE 4
+SHA256 sha256;
 // =============== FILES ================
 //File myFile;
 // =============== SENSOR IDs ==============
@@ -79,7 +85,8 @@ void setup() {
 
 void loop() {
 
-    // TODO: datu glabāšana failā / loggeris
+    // TODO: ziņojuma parakstīšana HMAC
+    // TODO: datu glabāšana failā
     // logu atvēršanas/ aizvēršanas operācijas absolūtais laiks - konfigurējams
     ethernetManager();
     temperatureManager();
@@ -162,6 +169,36 @@ void ethernetManager(){
 void getSensorValue(EthernetClient client, JsonObject& json){
     printFreeMemory();
     byte sensorId = json["p"]["sensor"];
+    if (CHECK_MSG_SIG){
+        // hash from client
+        String sentHash = json["s"];
+        char sentHashCharArray[sentHash.length()+1];
+        sentHash.toCharArray(sentHashCharArray, sentHash.length()+1);
+        // message to hash
+        String msg = "m=1;p=sensor=" + String(sensorId) + ";;";
+        char msgCharArray[msg.length()+1];
+        msg.toCharArray(msgCharArray, msg.length()+1);
+//        Serial.println("sentHash: " + sentHash);
+//        Serial.println("msg: " + msg);      
+        uint8_t resultHash[HASH_SIZE];
+        sha256.resetHMAC(API_SECRET, sizeof(API_SECRET)-1);
+        sha256.update(msgCharArray, sizeof(msgCharArray)-1);
+        sha256.finalizeHMAC(API_SECRET, sizeof(API_SECRET)-1, resultHash, HASH_SIZE);
+        int offset = 0;
+        for (byte i=0; i<HASH_SIZE; i++){
+            byte val = getByteVal(sentHashCharArray[offset+i+1]) + (getByteVal(sentHashCharArray[offset+i]) << 4);
+//            Serial.print(resultHash[i]); 
+//            Serial.print(" - ");
+//            Serial.print(sendb);
+//            Serial.println();
+            if (val != resultHash[i]){
+                  // TODO error loggeris
+                  return;
+            }
+            offset++;
+        }
+        printFreeMemory();
+    }
     double value = -1;
     switch(sensorId){
         case SNSR_TEMP_1:
@@ -360,5 +397,14 @@ boolean isArraysEquals(byte a[], byte b[], int array_size){
 void printFreeMemory(){
     Serial.print("freeMemory()=");
     Serial.println(freeMemory());  
+}
+
+byte getByteVal(char c){
+    if(c >= '0' && c <= '9'){
+        return (byte)(c - '0');
+    }
+    else{
+        return (byte)(c-'A'+10);
+    }
 }
 
